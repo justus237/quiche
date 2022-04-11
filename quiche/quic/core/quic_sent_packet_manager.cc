@@ -61,9 +61,6 @@ inline bool ShouldForceRetransmission(TransmissionType transmission_type) {
 // losses.
 static const uint32_t kConservativeUnpacedBurst = 2;
 
-// The default number of PTOs to trigger path degrading.
-static const uint32_t kNumProbeTimeoutsForPathDegradingDelay = 4;
-
 }  // namespace
 
 #define ENDPOINT                                                         \
@@ -115,7 +112,7 @@ QuicSentPacketManager::QuicSentPacketManager(
       first_pto_srtt_multiplier_(0),
       use_standard_deviation_for_pto_(false),
       pto_multiplier_without_rtt_samples_(3),
-      num_ptos_for_path_degrading_(kNumProbeTimeoutsForPathDegradingDelay),
+      num_ptos_for_path_degrading_(0),
       ignore_pings_(false),
       ignore_ack_delay_(false) {
   SetSendAlgorithm(congestion_control_type);
@@ -239,6 +236,9 @@ void QuicSentPacketManager::SetFromConfig(const QuicConfig& config) {
     }
     if (config.HasClientRequestedIndependentOption(kPDP3, perspective)) {
       num_ptos_for_path_degrading_ = 3;
+    }
+    if (config.HasClientRequestedIndependentOption(kPDP4, perspective)) {
+      num_ptos_for_path_degrading_ = 4;
     }
     if (config.HasClientRequestedIndependentOption(kPDP5, perspective)) {
       num_ptos_for_path_degrading_ = 5;
@@ -1388,8 +1388,7 @@ const QuicTime QuicSentPacketManager::GetRetransmissionTime() const {
 }
 
 const QuicTime::Delta QuicSentPacketManager::GetPathDegradingDelay() const {
-  if (pto_enabled_) {
-    QUICHE_DCHECK_GT(num_ptos_for_path_degrading_, 0);
+  if (num_ptos_for_path_degrading_ > 0) {
     return num_ptos_for_path_degrading_ * GetPtoDelay();
   }
   return GetNConsecutiveRetransmissionTimeoutDelay(
