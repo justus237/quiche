@@ -38,10 +38,6 @@ class QUIC_EXPORT_PRIVATE QuicBatchWriterBase : public QuicPacketWriter {
 
   void SetWritable() final { write_blocked_ = false; }
 
-  absl::optional<int> MessageTooBigErrorCode() const override {
-    return EMSGSIZE;
-  }
-
   QuicByteCount GetMaxPacketSize(
       const QuicSocketAddress& /*peer_address*/) const final {
     return kMaxOutgoingPacketSize;

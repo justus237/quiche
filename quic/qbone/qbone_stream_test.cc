@@ -108,10 +108,6 @@ class DummyPacketWriter : public QuicPacketWriter {
 
   void SetWritable() override {}
 
-  absl::optional<int> MessageTooBigErrorCode() const override {
-    return absl::nullopt;
-  }
-
   QuicByteCount GetMaxPacketSize(
       const QuicSocketAddress& peer_address) const override {
     return 0;

@@ -32,6 +32,7 @@
 #include "quic/core/quic_types.h"
 #include "quic/core/quic_utils.h"
 #include "quic/platform/api/quic_epoll.h"
+#include "quic/platform/api/quic_error_code_wrappers.h"
 #include "quic/platform/api/quic_expect_bug.h"
 #include "quic/platform/api/quic_flags.h"
 #include "quic/platform/api/quic_logging.h"
@@ -5613,7 +5614,7 @@ class BadShloPacketWriter : public QuicPacketWriterWrapper {
         TypeByteIsServerHello(type_byte)) {
       QUIC_DVLOG(1) << "Return write error for packet containing ServerHello";
       error_returned_ = true;
-      return WriteResult(WRITE_STATUS_ERROR, *MessageTooBigErrorCode());
+      return WriteResult(WRITE_STATUS_ERROR, QUIC_EMSGSIZE);
     }
     return result;
   }
@@ -5697,7 +5698,7 @@ class BadShloPacketWriter2 : public QuicPacketWriterWrapper {
     } else if (!error_returned_) {
       QUIC_DVLOG(1) << "Return write error for short header packet";
       error_returned_ = true;
-      return WriteResult(WRITE_STATUS_ERROR, *MessageTooBigErrorCode());
+      return WriteResult(WRITE_STATUS_ERROR, QUIC_EMSGSIZE);
     }
     return QuicPacketWriterWrapper::WritePacket(buffer, buf_len, self_address,
                                                 peer_address, options);

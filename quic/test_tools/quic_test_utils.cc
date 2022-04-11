@@ -28,6 +28,7 @@
 #include "quic/core/quic_types.h"
 #include "quic/core/quic_utils.h"
 #include "quic/core/quic_versions.h"
+#include "quic/platform/api/quic_error_code_wrappers.h"
 #include "quic/platform/api/quic_flags.h"
 #include "quic/platform/api/quic_logging.h"
 #include "quic/test_tools/crypto_test_utils.h"
@@ -1451,10 +1452,10 @@ WriteResult TestPacketWriter::WritePacket(const char* buffer,
   }
   if (next_packet_too_large_) {
     next_packet_too_large_ = false;
-    return WriteResult(WRITE_STATUS_ERROR, *MessageTooBigErrorCode());
+    return WriteResult(WRITE_STATUS_ERROR, QUIC_EMSGSIZE);
   }
   if (always_get_packet_too_large_) {
-    return WriteResult(WRITE_STATUS_ERROR, *MessageTooBigErrorCode());
+    return WriteResult(WRITE_STATUS_ERROR, QUIC_EMSGSIZE);
   }
   if (IsWriteBlocked()) {
     return WriteResult(is_write_blocked_data_buffered_
