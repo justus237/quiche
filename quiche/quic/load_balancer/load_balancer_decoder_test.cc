@@ -4,6 +4,7 @@
 
 #include "quiche/quic/load_balancer/load_balancer_decoder.h"
 
+#include "absl/base/macros.h"
 #include "quiche/quic/load_balancer/load_balancer_server_id.h"
 #include "quiche/quic/platform/api/quic_expect_bug.h"
 #include "quiche/quic/platform/api/quic_test.h"
@@ -50,10 +51,11 @@ TEST_F(LoadBalancerDecoderTest, UnencryptedConnectionIdTestVectors) {
                             0x5f, 0xee, 0x15, 0xda, 0x27, 0xc4}),
           MakeServerId(kServerId, 8),
       }};
-  for (const auto& test : test_vectors) {
+  for (uint8_t i = 0; i < ABSL_ARRAYSIZE(test_vectors); i++) {
     LoadBalancerDecoder decoder;
-    EXPECT_TRUE(decoder.AddConfig(test.config));
-    EXPECT_EQ(decoder.GetServerId(test.connection_id), test.server_id);
+    EXPECT_TRUE(decoder.AddConfig(test_vectors[i].config));
+    EXPECT_EQ(decoder.GetServerId(test_vectors[i].connection_id),
+              test_vectors[i].server_id);
   }
 }
 
@@ -90,10 +92,12 @@ TEST_F(LoadBalancerDecoderTest, DecoderTestVectors) {
           MakeServerId(kServerId, 9),
       },
   };
-  for (const auto& test : test_vectors) {
+
+  for (uint8_t i = 0; i < ABSL_ARRAYSIZE(test_vectors); i++) {
     LoadBalancerDecoder decoder;
-    EXPECT_TRUE(decoder.AddConfig(test.config));
-    EXPECT_EQ(decoder.GetServerId(test.connection_id), test.server_id);
+    EXPECT_TRUE(decoder.AddConfig(test_vectors[i].config));
+    EXPECT_EQ(decoder.GetServerId(test_vectors[i].connection_id),
+              test_vectors[i].server_id);
   }
 }
 

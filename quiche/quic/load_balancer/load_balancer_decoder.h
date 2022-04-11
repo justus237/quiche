@@ -17,15 +17,16 @@ class QUIC_EXPORT_PRIVATE LoadBalancerDecoder {
   // Returns false if the config_id codepoint is already occupied.
   bool AddConfig(const LoadBalancerConfig& config);
 
-  // Remove support for a config. Does nothing if there is no config for
-  // |config_id|. Does nothing and creates a bug if |config_id| is greater than
-  // 2.
+  // Remove support for a config
   void DeleteConfig(const uint8_t config_id);
 
-  // Extract a server ID from |connection_id|. If there is no config for the
-  // codepoint, |connection_id| is too short, or there's a decrypt error,
-  // returns empty. Will accept |connection_id| that is longer than necessary
-  // without error.
+  // For these "Get" functions, the calling code might not know the length of
+  // the connection ID. That's OK; if not, just send at least
+  // kQuicMaxConnectionIdWithLengthPrefixLength bytes in a QuicConnectionId.
+
+  // Extract a server ID from a connection ID. If there is no config for the
+  // codepoint, the connection ID is too short, or there's a decrypt error,
+  // returns empty.
   absl::optional<LoadBalancerServerId> GetServerId(
       const QuicConnectionId& connection_id) const;
 
@@ -36,7 +37,7 @@ class QUIC_EXPORT_PRIVATE LoadBalancerDecoder {
 
  private:
   // Decoders can support up to 3 configs at once.
-  absl::optional<LoadBalancerConfig> config_[kNumLoadBalancerConfigs];
+  absl::optional<LoadBalancerConfig> config_[3];
 };
 
 }  // namespace quic
