@@ -6,6 +6,13 @@
 
 #include "quic/core/quic_clock.h"
 
+#include "absl/strings/string_view.h"
+#include <iostream>
+#include <fstream>
+#include <ios>
+#include <string>
+#include "common/quiche_text_utils.h"
+
 namespace quic {
 
 namespace {
@@ -45,6 +52,21 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
                                     const TransportParameters& params,
                                     const ApplicationState* application_state) {
   QUICHE_DCHECK(session) << "TLS session is not inserted into client cache.";
+  fprintf(stderr, "Setting session ticket for %s:%u\n", server_id.host().c_str(), server_id.port());
+  QUIC_DLOG(ERROR) << "Setting session ticket for " << server_id.host() << ":" << server_id.port();
+  
+  std::string session_cache_file = "chrome_session_cache.txt";
+  std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
+    if (output_file) {
+      fprintf(stderr, "-----Opened %s\n", session_cache_file.c_str());
+      output_file << server_id.host() << ":" << server_id.port() << std::endl;
+    } else {
+      fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
+    }
+    output_file.close();
+  
+  
+  
   auto iter = cache_.Lookup(server_id);
   if (iter == cache_.end()) {
     CreateAndInsertEntry(server_id, std::move(session), params,
