@@ -55,10 +55,10 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
   fprintf(stderr, "Setting session ticket for %s:%u\n", server_id.host().c_str(), server_id.port());
   QUIC_DLOG(ERROR) << "Setting session ticket for " << server_id.host() << ":" << server_id.port();
   
-  std::string session_cache_file = "chrome_session_cache.txt";
+  std::string session_cache_file = "/tmp/chrome_session_cache.txt";
   std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
     if (output_file) {
-      fprintf(stderr, "-----Opened %s\n", session_cache_file.c_str());
+      fprintf(stderr, "-----Opened %s from Insert for writing\n", session_cache_file.c_str());
       output_file << server_id.host() << ":" << server_id.port() << std::endl;
     } else {
       fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
@@ -91,6 +91,19 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
 
 std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
     const QuicServerId& server_id, QuicWallTime now, const SSL_CTX* /*ctx*/) {
+
+     std::string session_cache_file = "/tmp/chrome_session_cache.txt";
+     std::ifstream input_file(session_cache_file.c_str());
+     if (input_file.is_open()) {
+         fprintf(stderr, "-----Opened %s from Lookup for reading\n", session_cache_file.c_str());
+        for( std::string line; getline( input_file, line ); ) {
+            fprintf(stderr, "-----%s\n", line.c_str());
+        }
+     } else {
+      fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
+    }
+     input_file.close();
+
   auto iter = cache_.Lookup(server_id);
   if (iter == cache_.end()) return nullptr;
 
