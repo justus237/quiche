@@ -9,6 +9,7 @@
 #include "quic/core/crypto/transport_parameters.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/strings/str_split.h"
 #include <iostream>
 #include <fstream>
 #include <ios>
@@ -91,16 +92,16 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
         std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
         if (output_file) {
             fprintf(stderr, "-----Opened %s from Insert for writing\n", session_cache_file.c_str());
-            output_file << "session=" <<server_id.host() << ":" << server_id.port() << "||" <<
+            output_file << "session=" <<server_id.host() << ":" << server_id.port() << "|" <<
                     absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(encoded),
-                    encoded_len)).c_str() << "||" <<
+                    encoded_len)).c_str() << "|" <<
                     absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(serialized_param_bytes.data()),
-                    serialized_param_bytes.size())).c_str() << "||" <<
+                    serialized_param_bytes.size())).c_str() << "|" <<
                     absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(application_state->data()),
-                    application_state->size())).c_str() << ";" << std::endl;
+                    application_state->size())).c_str() << "" << std::endl;
         } else {
             fprintf(stderr,
                     "-----Could not open %s %s\nthis means we are probably on macos so instead we test serialization and subsequent parsing of transport params\n",
@@ -148,74 +149,90 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
 
 std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
     const QuicServerId& server_id, QuicWallTime now, const SSL_CTX* /*ctx*/) {
+  if (first_lookup_from_cold_start) {
+      first_lookup_from_cold_start = false;
+      std::ifstream input_file(session_cache_file.c_str());
+      if (input_file.is_open()) {
+          fprintf(stderr, "-----Opened %s from Lookup for reading\n", session_cache_file.c_str());
 
-     std::string session_cache_file = "/tmp/chrome_session_cache.txt";
-     std::ifstream input_file(session_cache_file.c_str());
-     if (input_file.is_open()) {
-         fprintf(stderr, "-----Opened %s from Lookup for reading\n", session_cache_file.c_str());
-        for( std::string line; getline( input_file, line ); ) {
-            fprintf(stderr, "-----%s\n", line.c_str());
-            //case session
-            /*auto state = std::make_unique<QuicResumptionState>();
+          //we might return early without any state being used but unique pointers should just get destroyed
+          auto state = std::make_unique<QuicResumptionState>();
 
-            TransportParameters params_;
-            std::string error_details;
-            bool success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
-                                                    Perspective::IS_SERVER,
-                                                    serialized_param_bytes.data(),
-                                                    serialized_param_bytes.size(),
-                                                    &params_, &error_details);
+          for (std::string line; getline(input_file, line);) {
+              fprintf(stderr, "-----%s\n", line.c_str());
+              std::vector<std::string> outer_split = absl::StrSplit(line, '=');
+              if (strcmp(outer_split[0].c_str(), "session") == 0) {
+                  //case session
+                  std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
+                  std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
+                  if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || server_id.port() != server_id_from_disk[1]) {
+                      //set our flag again so we can try again
+                      first_lookup_from_cold_start = true;
+                      return nullptr;
+                  }
+                  std::string serialized_param_bytes = absl::HexStringToBytes(absl::string_view(inner_split[2]));
+                  TransportParameters params_;
+                  std::string error_details;
+                  bool success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
+                     Perspective::IS_SERVER,
+                     reinterpret_cast<const uint8_t*>(&serialized_param_bytes),
+                     sizeof(serialized_param_bytes),
+                     &params_, &error_details);
+                  //copy it because im too stupid to figure out c++
+                  auto params = std::make_unique<TransportParameters>(params_);
 
-            auto params = std::make_unique<TransportParameters>(params_);
-            std::string cached_session =
-                    absl::HexStringToBytes(absl::string_view(kCachedSession));
-            SSL_SESSION* session = SSL_SESSION_from_bytes(
-                    reinterpret_cast<const uint8_t*>(cached_session.data()),
-                    cached_session.size(), ctx);
-            state->tls_session = bssl::UniquePtr<SSL_SESSION>(session);
-            state->application_state = std::make_unique<ApplicationState>(absl::HexStringToBytes(absl::string_view(app_str)));
-            */
-            //case token
+                  std::string cached_session =
+                  absl::HexStringToBytes(absl::string_view(inner_split[1]));
+                  SSL_SESSION* session = SSL_SESSION_from_bytes(
+                  reinterpret_cast<const uint8_t*>(cached_session.data()),
+                  cached_session.size(), ctx);
+                  state->tls_session = bssl::UniquePtr<SSL_SESSION>(session);
+                  state->application_state = std::make_unique<ApplicationState>(absl::HexStringToBytes(absl::string_view(inner_split[3])));
+                  return state;
+              }
+              //case token
 
+          }
+      } else {
+          fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
+      }
+      input_file.close();
+      //clear the file after using it for the first lookup
+      std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::trunc);
+      if (output_file) {
+          fprintf(stderr, "-----cleared session cache file successfully\n");
+      } else {
+          fprintf(stderr, "-----failed clearing session cache file: %s\n", strerror(errno));
+      }
+      output_file.close();
+  }
+
+        auto iter = cache_.Lookup(server_id);
+        if (iter == cache_.end()) return nullptr;
+
+        if (!IsValid(iter->second->PeekSession(), now.ToUNIXSeconds())) {
+            QUIC_DLOG(INFO) << "TLS Session expired for host:" << server_id.host();
+            cache_.Erase(iter);
+            return nullptr;
         }
-     } else {
-      fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
+        auto state = std::make_unique<QuicResumptionState>();
+        state->tls_session = iter->second->PopSession();
+        if (iter->second->params != nullptr) {
+            state->transport_params =
+                    std::make_unique<TransportParameters>(*iter->second->params);
+        }
+        if (iter->second->application_state != nullptr) {
+            state->application_state =
+                    std::make_unique<ApplicationState>(*iter->second->application_state);
+        }
+        if (!iter->second->token.empty()) {
+            state->token = iter->second->token;
+            // Clear token after use.
+            iter->second->token.clear();
+        }
+
+        return state;
     }
-     input_file.close();
-     //clear the file after using it for the first lookup
-    std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::trunc);
-    if (output_file) {
-        fprintf(stderr, "-----cleared session cache file successfully\n");
-    } else {
-        fprintf(stderr, "-----failed clearing session cache file: %s\n", strerror(errno));
-    }
-    output_file.close();
-
-  auto iter = cache_.Lookup(server_id);
-  if (iter == cache_.end()) return nullptr;
-
-  if (!IsValid(iter->second->PeekSession(), now.ToUNIXSeconds())) {
-    QUIC_DLOG(INFO) << "TLS Session expired for host:" << server_id.host();
-    cache_.Erase(iter);
-    return nullptr;
-  }
-  auto state = std::make_unique<QuicResumptionState>();
-  state->tls_session = iter->second->PopSession();
-  if (iter->second->params != nullptr) {
-    state->transport_params =
-        std::make_unique<TransportParameters>(*iter->second->params);
-  }
-  if (iter->second->application_state != nullptr) {
-    state->application_state =
-        std::make_unique<ApplicationState>(*iter->second->application_state);
-  }
-  if (!iter->second->token.empty()) {
-    state->token = iter->second->token;
-    // Clear token after use.
-    iter->second->token.clear();
-  }
-
-  return state;
 }
 
 void QuicClientSessionCache::ClearEarlyData(const QuicServerId& server_id) {
