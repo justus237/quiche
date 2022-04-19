@@ -9,6 +9,7 @@
 #include <forward_list>
 #include <memory>
 #include <utility>
+#include <iostream>
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -676,15 +677,17 @@ bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
         << "Not serializing invalid transport parameters: " << error_details;
     return false;
   }
-  if (!in.legacy_version_information.has_value() ||
+  /*if (!in.legacy_version_information.has_value() ||
       in.legacy_version_information.value().version == 0 ||
       (in.perspective == Perspective::IS_SERVER &&
        in.legacy_version_information.value().supported_versions.empty())) {
     QUIC_BUG(missing versions) << "Refusing to serialize without versions";
     return false;
-  }
+  }*/
   TransportParameters::ParameterMap custom_parameters = in.custom_parameters;
-  for (const auto& kv : custom_parameters) {
+  //since ||in|| is const pointer, we cannot actually modify or remove custom parameters
+  //so we have to just comment this out for now, does not look like they are used further down anyway, why is c++ like this...
+  /*for (const auto& kv : custom_parameters) {
     if (kv.first % 31 == 27) {
       // See the "Reserved Transport Parameters" section of RFC 9000.
       QUIC_BUG(custom_parameters with GREASE)
@@ -692,10 +695,10 @@ bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
           << " is not allowed";
       return false;
     }
-  }
-
+  }*/
+  //removed grease for now, see below
   // Maximum length of the GREASE transport parameter (see below).
-  static constexpr size_t kMaxGreaseLength = 16;
+  //static constexpr size_t kMaxGreaseLength = 16;
 
   // Empirically transport parameters generally fit within 128 bytes, but we
   // need to allocate the size up front. Integer transport parameters
@@ -789,6 +792,11 @@ bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
   // "Reserved Transport Parameters" section of RFC 9000.
   // This forces receivers to support unexpected input.
   QuicRandom* random = QuicRandom::GetInstance();
+  //the random is reused later on to shuffle around params so we have to keep it here
+  //but grease is removed because we use a controlled measurement setup
+  //and this just seems unnecessary
+  //might add it back later on maybe
+  /*
   // Transport parameter identifiers are 62 bits long so we need to
   // ensure that the output of the computation below fits in 62 bits.
   uint64_t grease_id64 = random->RandUint64() % ((1ULL << 62) - 31);
@@ -802,14 +810,14 @@ bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
   QUICHE_DCHECK_GE(kMaxGreaseLength, grease_length);
   char grease_contents[kMaxGreaseLength];
   random->RandBytes(grease_contents, grease_length);
-  custom_parameters[grease_id] = std::string(grease_contents, grease_length);
+  custom_parameters[grease_id] = std::string(grease_contents, grease_length);*/
 
   // Custom parameters.
   for (const auto& kv : custom_parameters) {
     max_transport_param_length += kTypeAndValueLength + kv.second.length();
     parameter_ids.push_back(kv.first);
   }
-
+  //wer hat sich das denn bitte ausgedacht
   // Randomize order of sent transport parameters by walking the array
   // backwards and swapping each element with a random earlier one.
   for (size_t i = parameter_ids.size() - 1; i > 0; i--) {
@@ -1202,11 +1210,13 @@ bool ParseTransportParameters(ParsedQuicVersion version,
                               std::string* error_details) {
   out->perspective = perspective;
   QuicDataReader reader(reinterpret_cast<const char*>(in), in_len);
+  fprintf(stderr, "starting transport parameter parser\n");
 
   while (!reader.IsDoneReading()) {
     uint64_t param_id64;
     if (!reader.ReadVarInt62(&param_id64)) {
       *error_details = "Failed to parse transport parameter ID";
+        fprintf(stderr, "Failed to parse transport parameter ID\n");
       return false;
     }
     TransportParameters::TransportParameterId param_id =
@@ -1216,6 +1226,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       *error_details =
           "Failed to read length and value of transport parameter " +
           TransportParameterIdToString(param_id);
+        fprintf(stderr, "Failed to read length and value of transport parameter\n");
       return false;
     }
     QuicDataReader value_reader(value);
@@ -1225,6 +1236,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
         if (out->original_destination_connection_id.has_value()) {
           *error_details =
               "Received a second original_destination_connection_id";
+            fprintf(stderr, "Received a second original_destination_connection_id\n");
           return false;
         }
         const size_t connection_id_length = value_reader.BytesRemaining();
@@ -1233,12 +1245,14 @@ bool ParseTransportParameters(ParsedQuicVersion version,
           *error_details = absl::StrCat(
               "Received original_destination_connection_id of invalid length ",
               connection_id_length);
+            fprintf(stderr, "Received original_destination_connection_id of invalid length\n");
           return false;
         }
         QuicConnectionId original_destination_connection_id;
         if (!value_reader.ReadConnectionId(&original_destination_connection_id,
                                            connection_id_length)) {
           *error_details = "Failed to read original_destination_connection_id";
+            fprintf(stderr, "Failed to read original_destination_connection_id\n");
           return false;
         }
         out->original_destination_connection_id =
@@ -1251,6 +1265,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kStatelessResetToken: {
         if (!out->stateless_reset_token.empty()) {
           *error_details = "Received a second stateless_reset_token";
+            fprintf(stderr, "Received a second stateless_reset_token\n");
           return false;
         }
         absl::string_view stateless_reset_token =
@@ -1259,6 +1274,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
           *error_details =
               absl::StrCat("Received stateless_reset_token of invalid length ",
                            stateless_reset_token.length());
+            fprintf(stderr, "Received stateless_reset_token of invalid length\n");
           return false;
         }
         out->stateless_reset_token.assign(
@@ -1303,6 +1319,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kDisableActiveMigration:
         if (out->disable_active_migration) {
           *error_details = "Received a second disable_active_migration";
+            fprintf(stderr, "Received a second disable_active_migration\n");
           return false;
         }
         out->disable_active_migration = true;
@@ -1323,6 +1340,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
             !value_reader.ReadBytes(&preferred_address.stateless_reset_token[0],
                                     kStatelessResetTokenLength)) {
           *error_details = "Failed to read preferred_address";
+            fprintf(stderr, "Failed to read preferred_address\n");
           return false;
         }
         preferred_address.ipv4_socket_address =
@@ -1333,12 +1351,14 @@ bool ParseTransportParameters(ParsedQuicVersion version,
             !preferred_address.ipv6_socket_address.host().IsIPv6()) {
           *error_details = "Received preferred_address of bad families " +
                            preferred_address.ToString();
+            fprintf(stderr, "Received preferred_address of bad families\n");
           return false;
         }
         if (!QuicUtils::IsConnectionIdValidForVersion(
                 preferred_address.connection_id, version.transport_version)) {
           *error_details = "Received invalid preferred_address connection ID " +
                            preferred_address.ToString();
+            fprintf(stderr, "Received invalid preferred_address connection ID\n");
           return false;
         }
         out->preferred_address =
@@ -1352,6 +1372,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kInitialSourceConnectionId: {
         if (out->initial_source_connection_id.has_value()) {
           *error_details = "Received a second initial_source_connection_id";
+            fprintf(stderr, "Received a second initial_source_connection_id\n");
           return false;
         }
         const size_t connection_id_length = value_reader.BytesRemaining();
@@ -1360,12 +1381,14 @@ bool ParseTransportParameters(ParsedQuicVersion version,
           *error_details = absl::StrCat(
               "Received initial_source_connection_id of invalid length ",
               connection_id_length);
+            fprintf(stderr, "Received initial_source_connection_id of invalid length\n");
           return false;
         }
         QuicConnectionId initial_source_connection_id;
         if (!value_reader.ReadConnectionId(&initial_source_connection_id,
                                            connection_id_length)) {
           *error_details = "Failed to read initial_source_connection_id";
+            fprintf(stderr, "Failed to read initial_source_connection_id\n");
           return false;
         }
         out->initial_source_connection_id = initial_source_connection_id;
@@ -1373,6 +1396,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kRetrySourceConnectionId: {
         if (out->retry_source_connection_id.has_value()) {
           *error_details = "Received a second retry_source_connection_id";
+            fprintf(stderr, "Received a second retry_source_connection_id\n");
           return false;
         }
         const size_t connection_id_length = value_reader.BytesRemaining();
@@ -1381,12 +1405,14 @@ bool ParseTransportParameters(ParsedQuicVersion version,
           *error_details = absl::StrCat(
               "Received retry_source_connection_id of invalid length ",
               connection_id_length);
+            fprintf(stderr, "Received retry_source_connection_id of invalid length\n");
           return false;
         }
         QuicConnectionId retry_source_connection_id;
         if (!value_reader.ReadConnectionId(&retry_source_connection_id,
                                            connection_id_length)) {
           *error_details = "Failed to read retry_source_connection_id";
+            fprintf(stderr, "Failed to read retry_source_connection_id\n");
           return false;
         }
         out->retry_source_connection_id = retry_source_connection_id;
@@ -1402,6 +1428,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kGoogleConnectionOptions: {
         if (out->google_connection_options.has_value()) {
           *error_details = "Received a second google_connection_options";
+            fprintf(stderr, "Received a second google_connection_options\n");
           return false;
         }
         out->google_connection_options = QuicTagVector{};
@@ -1409,6 +1436,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
           QuicTag connection_option;
           if (!value_reader.ReadTag(&connection_option)) {
             *error_details = "Failed to read a google_connection_options";
+              fprintf(stderr, "Failed to read a google_connection_options\n");
             return false;
           }
           out->google_connection_options.value().push_back(connection_option);
@@ -1422,12 +1450,14 @@ bool ParseTransportParameters(ParsedQuicVersion version,
         if (!value_reader.ReadUInt32(
                 &out->legacy_version_information.value().version)) {
           *error_details = "Failed to read Google version extension version";
+            fprintf(stderr, "Failed to read Google version extension version\n");
           return false;
         }
         if (perspective == Perspective::IS_SERVER) {
           uint8_t versions_length;
           if (!value_reader.ReadUInt8(&versions_length)) {
             *error_details = "Failed to parse Google supported versions length";
+              fprintf(stderr, "Failed to parse Google supported versions length\n");
             return false;
           }
           const uint8_t num_versions = versions_length / sizeof(uint32_t);
@@ -1435,6 +1465,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
             QuicVersionLabel version;
             if (!value_reader.ReadUInt32(&version)) {
               *error_details = "Failed to parse Google supported version";
+                fprintf(stderr, "Failed to parse Google supported version\n");
               return false;
             }
             out->legacy_version_information.value()
@@ -1445,18 +1476,21 @@ bool ParseTransportParameters(ParsedQuicVersion version,
       case TransportParameters::kVersionInformation: {
         if (out->version_information.has_value()) {
           *error_details = "Received a second version_information";
+            fprintf(stderr, "Received a second version_information\n");
           return false;
         }
         out->version_information = TransportParameters::VersionInformation();
         if (!value_reader.ReadUInt32(
                 &out->version_information.value().chosen_version)) {
           *error_details = "Failed to read chosen version";
+            fprintf(stderr, "Failed to read chosen version\n");
           return false;
         }
         while (!value_reader.IsDoneReading()) {
           QuicVersionLabel other_version;
           if (!value_reader.ReadUInt32(&other_version)) {
             *error_details = "Failed to parse other version";
+              fprintf(stderr, "Failed to parse other version\n");
             return false;
           }
           out->version_information.value().other_versions.push_back(
@@ -1472,6 +1506,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
             out->custom_parameters.end()) {
           *error_details = "Received a second unknown parameter" +
                            TransportParameterIdToString(param_id);
+            fprintf(stderr, "Received a second unknown parameter\n");
           return false;
         }
         out->custom_parameters[param_id] =
@@ -1480,18 +1515,23 @@ bool ParseTransportParameters(ParsedQuicVersion version,
     }
     if (!parse_success) {
       QUICHE_DCHECK(!error_details->empty());
+        *error_details = "Failed to parse for random reason";
+        fprintf(stderr, "Failed to parse for random reason\n");
       return false;
     }
     if (!value_reader.IsDoneReading()) {
       *error_details = absl::StrCat(
           "Received unexpected ", value_reader.BytesRemaining(),
           " bytes after parsing ", TransportParameterIdToString(param_id));
+        fprintf(stderr, "Received unexpected bytes after parsing\n");
       return false;
     }
   }
 
   if (!out->AreValid(error_details)) {
     QUICHE_DCHECK(!error_details->empty());
+      *error_details = "Failed to parse because out would be invalid for some reason";
+      fprintf(stderr, "Failed to parse because out would be invalid for some reason\n");
     return false;
   }
 

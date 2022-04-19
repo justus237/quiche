@@ -75,6 +75,9 @@ class QUIC_EXPORT_PRIVATE QuicClientSessionCache : public SessionCache {
                             const ApplicationState* application_state);
 
   QuicLRUCache<QuicServerId, Entry, QuicServerIdHash> cache_;
+  std::string session_cache_file;
+  bool first_lookup_from_cold_start;
+  bool first_insert_from_cold_start;
 };
 
 }  // namespace quic
