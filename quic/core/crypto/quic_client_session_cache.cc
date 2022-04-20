@@ -191,10 +191,10 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                       fprintf(stderr, "transport parametes from disk cache:\n%s\n", params_.ToString().c_str());
                   }
                   //copy it because im too stupid to figure out c++
-                  //auto params = std::make_unique<TransportParameters>(params_);
-                  //state->transport_params = std::move(params_);
-                  std::unique_ptr<TransportParameters> params;
-                  params.reset(&params_);
+                  auto params = std::make_unique<TransportParameters>(params_);
+                  state->transport_params = std::move(params_);
+                  /*std::unique_ptr<TransportParameters> params;
+                  params.reset(&params_);*/
 
                   fprintf(stderr, "session_str = %s;\n", inner_split[1].c_str());
                   std::string cached_session = absl::HexStringToBytes(absl::string_view(inner_split[1]));
