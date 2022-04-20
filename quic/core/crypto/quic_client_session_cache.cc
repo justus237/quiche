@@ -49,7 +49,8 @@ QuicClientSessionCache::QuicClientSessionCache(size_t max_entries)
     : cache_(max_entries),
       session_cache_file("/tmp/chrome_session_cache.txt"),
       first_lookup_from_cold_start(true),
-      first_insert_from_cold_start(true)
+      first_insert_from_cold_start(true),
+      server_under_test("www.example.org")
       {}
 
 QuicClientSessionCache::~QuicClientSessionCache() { Clear(); }
@@ -83,8 +84,8 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
           application_state->size())).c_str());
 
 
-    if (first_insert_from_cold_start) {
-        first_insert_from_cold_start = false;
+    if (strcmp(server_id.host().c_str(), server_under_test.c_str()) == 0) {
+        //first_insert_from_cold_start = false;
         //if we are inserting for the first time we are likely visiting a test website
         //we kind of cannot prevent google api stuff to also use this cache unless we manually filter
         //TODO: maybe manually filter all the google api stuff out, would probably make life easier down the road
@@ -148,51 +149,76 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
 }
 
 std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
-    const QuicServerId& server_id, QuicWallTime now, const SSL_CTX* /*ctx*/) {
-  if (first_lookup_from_cold_start) {
-      first_lookup_from_cold_start = false;
+    const QuicServerId& server_id, QuicWallTime now, const SSL_CTX* ctx) {
+    if (strcmp(server_id.host().c_str(), server_under_test.c_str()) == 0) {
+      //first_lookup_from_cold_start = false;
       std::ifstream input_file(session_cache_file.c_str());
       if (input_file.is_open()) {
           fprintf(stderr, "-----Opened %s from Lookup for reading\n", session_cache_file.c_str());
 
           //we might return early without any state being used but unique pointers should just get destroyed
           auto state = std::make_unique<QuicResumptionState>();
-
+          std::string _token;
+          //std::map<std::string, std::string> tokens;
           for (std::string line; getline(input_file, line);) {
-              fprintf(stderr, "-----%s\n", line.c_str());
+              //fprintf(stderr, "-----%s\n", line.c_str());
               std::vector<std::string> outer_split = absl::StrSplit(line, '=');
               if (strcmp(outer_split[0].c_str(), "session") == 0) {
                   //case session
+                  //we only output one session so any previous tokens hopefully get discarded
                   std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
                   std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
-                  if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || server_id.port() != server_id_from_disk[1]) {
+                  fprintf(stderr, "-----session ticket for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
+                  /*if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || strcmp(std::to_string(server_id.port()).c_str(), server_id_from_disk[1].c_str()) != 0) {
                       //set our flag again so we can try again
                       first_lookup_from_cold_start = true;
                       return nullptr;
-                  }
-                  std::string serialized_param_bytes = absl::HexStringToBytes(absl::string_view(inner_split[2]));
+                  }*/
+                  fprintf(stderr, "param_str = %s;\n", inner_split[2].c_str());
+                  std::string serialized_param_bytes_str = absl::HexStringToBytes(absl::string_view(inner_split[2]));
+                  std::vector<uint8_t> serialized_param_bytes(serialized_param_bytes_str.begin(), serialized_param_bytes_str.end());
+                  //might leak memory when using copy constructor not really sure not a c++ guru
                   TransportParameters params_;
                   std::string error_details;
                   bool success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
                      Perspective::IS_SERVER,
-                     reinterpret_cast<const uint8_t*>(&serialized_param_bytes),
-                     sizeof(serialized_param_bytes),
+                     serialized_param_bytes.data(),
+                     serialized_param_bytes.size(),
                      &params_, &error_details);
+                  if (!success) {
+                      fprintf(stderr, "error when parsing transport parameters: %s\n", error_details.c_str());
+                  } else {
+                      fprintf(stderr, "transport parametes from disk cache:\n%s\n", params_.ToString().c_str());
+                  }
                   //copy it because im too stupid to figure out c++
-                  auto params = std::make_unique<TransportParameters>(params_);
+                  //auto params = std::make_unique<TransportParameters>(params_);
+                  //state->transport_params = std::move(params_);
+                  std::unique_ptr<TransportParameters> params;
+                  params.reset(&params_);
 
-                  std::string cached_session =
-                  absl::HexStringToBytes(absl::string_view(inner_split[1]));
+                  fprintf(stderr, "session_str = %s;\n", inner_split[1].c_str());
+                  std::string cached_session = absl::HexStringToBytes(absl::string_view(inner_split[1]));
                   SSL_SESSION* session = SSL_SESSION_from_bytes(
                   reinterpret_cast<const uint8_t*>(cached_session.data()),
                   cached_session.size(), ctx);
                   state->tls_session = bssl::UniquePtr<SSL_SESSION>(session);
-                  state->application_state = std::make_unique<ApplicationState>(absl::HexStringToBytes(absl::string_view(inner_split[3])));
-                  return state;
+
+                  fprintf(stderr, "app_str = %s;\n", inner_split[3].c_str());
+                  std::string app_str = absl::HexStringToBytes(absl::string_view(inner_split[3]));
+                  std::vector<uint8_t> app_state_bytes(app_str.begin(), app_str.end());
+                  state->application_state = std::make_unique<ApplicationState>(app_state_bytes);
+
               }
               //case token
 
+              if (strcmp(outer_split[0].c_str(), "token") == 0) {
+                  _token = absl::HexStringToBytes(absl::string_view(outer_split[1]));
+                  //std::map<std::string, std::string> server_to_token = absl::StrSplit(outer_split[1], '|');
+
+              }
           }
+          state->token = _token;
+          return state;
       } else {
           fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
       }
@@ -232,8 +258,10 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
         }
 
         return state;
-    }
+
 }
+
+
 
 void QuicClientSessionCache::ClearEarlyData(const QuicServerId& server_id) {
   auto iter = cache_.Lookup(server_id);
@@ -253,10 +281,12 @@ void QuicClientSessionCache::OnNewTokenReceived(const QuicServerId& server_id,
   }
   fprintf(stderr, "token store entry for %s:%u\n", server_id.host().c_str(), server_id.port());
   fprintf(stderr, "token = \"%s\";\n", absl::BytesToHexString(token).c_str());
-    std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
-    if (output_file) {
-        output_file << "token=" <<server_id.host() << ":" << server_id.port() << "||" <<
-        absl::BytesToHexString(token).c_str() << ";" << std::endl;
+    if (strcmp(server_id.host().c_str(), server_under_test.c_str()) == 0) {
+        std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
+        if (output_file) {
+            output_file << "token=" << server_id.host() << ":" << server_id.port() << "|" <<
+                        absl::BytesToHexString(token).c_str() << ";" << std::endl;
+        }
     }
   auto iter = cache_.Lookup(server_id);
   if (iter == cache_.end()) {

@@ -78,6 +78,7 @@ class QUIC_EXPORT_PRIVATE QuicClientSessionCache : public SessionCache {
   std::string session_cache_file;
   bool first_lookup_from_cold_start;
   bool first_insert_from_cold_start;
+  std::string server_under_test;
 };
 
 }  // namespace quic
