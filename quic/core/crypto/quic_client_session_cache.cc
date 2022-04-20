@@ -60,7 +60,7 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
                                     const TransportParameters& params,
                                     const ApplicationState* application_state) {
   QUICHE_DCHECK(session) << "TLS session is not inserted into client cache.";
-  fprintf(stderr, "session cache entry for %s:%u\n", server_id.host().c_str(), server_id.port());
+  fprintf(stderr, "insert: session cache entry for %s:%u\n", server_id.host().c_str(), server_id.port());
   QUIC_DLOG(ERROR) << "Setting session ticket for " << server_id.host() << ":" << server_id.port();
 
 
@@ -218,6 +218,7 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
 
               }
           }
+          fprintf(stderr, "token = %s;\n", absl::BytesToHexString(absl::string_view(_token)).c_str());
           state->token = _token;
           input_file.close();
           //clear the file after using it for the first lookup
