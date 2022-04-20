@@ -219,19 +219,21 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
               }
           }
           state->token = _token;
+          input_file.close();
+          //clear the file after using it for the first lookup
+          std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::trunc);
+          if (output_file) {
+              fprintf(stderr, "-----cleared session cache file successfully\n");
+          } else {
+              fprintf(stderr, "-----failed clearing session cache file: %s\n", strerror(errno));
+          }
+          output_file.close();
           return state;
       } else {
           fprintf(stderr, "-----Could not open %s %s\n", session_cache_file.c_str(), strerror(errno));
+          input_file.close();
       }
-      input_file.close();
-      //clear the file after using it for the first lookup
-      std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::trunc);
-      if (output_file) {
-          fprintf(stderr, "-----cleared session cache file successfully\n");
-      } else {
-          fprintf(stderr, "-----failed clearing session cache file: %s\n", strerror(errno));
-      }
-      output_file.close();
+
   }
 
         auto iter = cache_.Lookup(server_id);
