@@ -216,7 +216,7 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                   std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
                   std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
                   fprintf(stderr, "**disk cache: token for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
-                  fprintf(stderr, "token = \"%s\";\n", absl::BytesToHexString(absl::string_view(inner_split[1])).c_str());
+                  fprintf(stderr, "token = \"%s\";\n", inner_split[1].c_str());
                   _token = absl::HexStringToBytes(absl::string_view(inner_split[1]));
                   //std::map<std::string, std::string> server_to_token = absl::StrSplit(outer_split[1], '|');
 
