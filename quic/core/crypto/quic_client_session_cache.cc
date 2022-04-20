@@ -213,12 +213,13 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
               //case token
 
               if (strcmp(outer_split[0].c_str(), "token") == 0) {
+                  fprintf(stderr, "token = \"%s\";\n", absl::BytesToHexString(absl::string_view(outer_split[1])).c_str());
                   _token = absl::HexStringToBytes(absl::string_view(outer_split[1]));
                   //std::map<std::string, std::string> server_to_token = absl::StrSplit(outer_split[1], '|');
 
               }
           }
-          fprintf(stderr, "token = %s;\n", absl::BytesToHexString(absl::string_view(_token)).c_str());
+          //fprintf(stderr, "token = %s;\n", absl::BytesToHexString(absl::string_view(_token)).c_str());
           state->token = _token;
           input_file.close();
           //clear the file after using it for the first lookup
