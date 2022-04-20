@@ -178,21 +178,22 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                   std::string serialized_param_bytes_str = absl::HexStringToBytes(absl::string_view(inner_split[2]));
                   std::vector<uint8_t> serialized_param_bytes(serialized_param_bytes_str.begin(), serialized_param_bytes_str.end());
                   //might leak memory when using copy constructor not really sure not a c++ guru
-                  TransportParameters params_;
+                  //TransportParameters params_;
+                  auto params = std::make_unique<TransportParameters>();
                   std::string error_details;
                   bool success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
                      Perspective::IS_SERVER,
                      serialized_param_bytes.data(),
                      serialized_param_bytes.size(),
-                     &params_, &error_details);
+                     params.get(), &error_details);
                   if (!success) {
                       fprintf(stderr, "error when parsing transport parameters: %s\n", error_details.c_str());
                   } else {
-                      fprintf(stderr, "transport parametes from disk cache:\n%s\n", params_.ToString().c_str());
+                      fprintf(stderr, "transport parameters from disk cache:\n%s\n", params->ToString().c_str());
                   }
                   //copy it because im too stupid to figure out c++
-                  auto params = std::make_unique<TransportParameters>(params_);
-                  state->transport_params = std::move(params_);
+                  //auto params = std::make_unique<TransportParameters>(params_);
+                  state->transport_params = std::move(params);
                   /*std::unique_ptr<TransportParameters> params;
                   params.reset(&params_);*/
 
