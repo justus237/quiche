@@ -168,7 +168,7 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                   //we only output one session so any previous tokens hopefully get discarded
                   std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
                   std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
-                  fprintf(stderr, "-----session ticket for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
+                  fprintf(stderr, "**disk cache: session ticket for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
                   /*if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || strcmp(std::to_string(server_id.port()).c_str(), server_id_from_disk[1].c_str()) != 0) {
                       //set our flag again so we can try again
                       first_lookup_from_cold_start = true;
@@ -213,8 +213,11 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
               //case token
 
               if (strcmp(outer_split[0].c_str(), "token") == 0) {
-                  fprintf(stderr, "token = \"%s\";\n", absl::BytesToHexString(absl::string_view(outer_split[1])).c_str());
-                  _token = absl::HexStringToBytes(absl::string_view(outer_split[1]));
+                  std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
+                  std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
+                  fprintf(stderr, "**disk cache: token for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
+                  fprintf(stderr, "token = \"%s\";\n", absl::BytesToHexString(absl::string_view(inner_split[1])).c_str());
+                  _token = absl::HexStringToBytes(absl::string_view(inner_split[1]));
                   //std::map<std::string, std::string> server_to_token = absl::StrSplit(outer_split[1], '|');
 
               }
