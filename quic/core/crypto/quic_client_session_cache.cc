@@ -102,7 +102,7 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
                     serialized_param_bytes.size())).c_str() << "|" <<
                     absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(application_state->data()),
-                    application_state->size())).c_str() << "" << std::endl;
+                    application_state->size())).c_str() << std::endl;
         } else {
             fprintf(stderr,
                     "-----Could not open %s %s\nthis means we are probably on macos so instead we test serialization and subsequent parsing of transport params\n",
@@ -293,7 +293,7 @@ void QuicClientSessionCache::OnNewTokenReceived(const QuicServerId& server_id,
         std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
         if (output_file) {
             output_file << "token=" << server_id.host() << ":" << server_id.port() << "|" <<
-                        absl::BytesToHexString(token).c_str() << ";" << std::endl;
+                        absl::BytesToHexString(token).c_str() << std::endl;
         }
     }
   auto iter = cache_.Lookup(server_id);
