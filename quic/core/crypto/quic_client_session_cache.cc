@@ -64,6 +64,9 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
   QUIC_DLOG(ERROR) << "Setting session ticket for " << server_id.host() << ":" << server_id.port();
 
 
+  /*if (params.perspective == Perspective::IS_SERVER) {
+      fprintf(stderr, "insert params with perspective server\n");
+  }*/
   std::vector<uint8_t> serialized_param_bytes;
   bool success = SerializeTransportParameters(ParsedQuicVersion::RFCv1(), params, &serialized_param_bytes);
   if (success != false) {
@@ -93,7 +96,7 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
         std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
         if (output_file) {
             fprintf(stderr, "-----Opened %s from Insert for writing\n", session_cache_file.c_str());
-            output_file << "session=" <<server_id.host() << ":" << server_id.port() << "|" <<
+            /*output_file << "session=" <<server_id.host() << ":" << server_id.port() << "|" <<
                     absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(encoded),
                     encoded_len)).c_str() << "|" <<
@@ -101,6 +104,15 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
                     reinterpret_cast<const char*>(serialized_param_bytes.data()),
                     serialized_param_bytes.size())).c_str() << "|" <<
                     absl::BytesToHexString(absl::string_view(
+                    reinterpret_cast<const char*>(application_state->data()),
+                    application_state->size())).c_str() << std::endl;*/
+            output_file << "session_ticket=" << absl::BytesToHexString(absl::string_view(
+                    reinterpret_cast<const char*>(encoded),
+                    encoded_len)).c_str() << std::endl;
+            output_file << "transport_params=" << absl::BytesToHexString(absl::string_view(
+                    reinterpret_cast<const char*>(serialized_param_bytes.data()),
+                    serialized_param_bytes.size())).c_str() << std::endl;
+            output_file << "application_layer=" << absl::BytesToHexString(absl::string_view(
                     reinterpret_cast<const char*>(application_state->data()),
                     application_state->size())).c_str() << std::endl;
         } else {
@@ -119,6 +131,21 @@ void QuicClientSessionCache::Insert(const QuicServerId& server_id,
                 fprintf(stderr, "error when parsing transport parameters: %s\n", error_details.c_str());
             } else {
                 fprintf(stderr, "should be equal to this:\n%s\n", params_.ToString().c_str());
+            }
+
+            fprintf(stderr, "**attempting to parse transport parameters from quic-go\n");
+            std::string quic_go_serialized_param_bytes_str = absl::HexStringToBytes(absl::string_view("0504800800000604800800000704800800000404800c000008024064090240640104800493e0030245ac0b011a0c000210d844bc493dd0420485b064972d9e6dd90014f84c56d1770f2e2853de54aca72d48c631a626b30e01040f04dc5e23bd10044f8758a1200100"));
+            std::vector<uint8_t> quic_go_serialized_param_bytes(quic_go_serialized_param_bytes_str.begin(), quic_go_serialized_param_bytes_str.end());
+            auto params_quic_go = std::make_unique<TransportParameters>();
+            success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
+                                                    Perspective::IS_SERVER,
+                                                    quic_go_serialized_param_bytes.data(),
+                                                    quic_go_serialized_param_bytes.size(),
+                                                    params_quic_go.get(), &error_details);
+            if (!success) {
+                fprintf(stderr, "error when parsing transport parameters: %s\n", error_details.c_str());
+            } else {
+                fprintf(stderr, "transport parameters from quic-go:\n%s\n", params_quic_go->ToString().c_str());
             }
 
         }
@@ -158,22 +185,25 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
 
           //we might return early without any state being used but unique pointers should just get destroyed
           auto state = std::make_unique<QuicResumptionState>();
-          std::string _token;
+          std::string token_bytes_str;
+          std::string session_ticket_bytes_str;
+          std::string transport_params_bytes_str;
+          std::string application_layer_bytes_str;
           //std::map<std::string, std::string> tokens;
           for (std::string line; getline(input_file, line);) {
               //fprintf(stderr, "-----%s\n", line.c_str());
+              // old case session
               std::vector<std::string> outer_split = absl::StrSplit(line, '=');
-              if (strcmp(outer_split[0].c_str(), "session") == 0) {
-                  //case session
+              /*if (strcmp(outer_split[0].c_str(), "session") == 0) {
                   //we only output one session so any previous tokens hopefully get discarded
                   std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
                   std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
                   fprintf(stderr, "**disk cache: session ticket for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
-                  /*if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || strcmp(std::to_string(server_id.port()).c_str(), server_id_from_disk[1].c_str()) != 0) {
+                  //if (strcmp(server_id.host().c_str(), server_id_from_disk[0].c_str()) != 0 || strcmp(std::to_string(server_id.port()).c_str(), server_id_from_disk[1].c_str()) != 0) {
                       //set our flag again so we can try again
-                      first_lookup_from_cold_start = true;
-                      return nullptr;
-                  }*/
+                  //    first_lookup_from_cold_start = true;
+                  //    return nullptr;
+                  //}
                   fprintf(stderr, "param_str = %s;\n", inner_split[2].c_str());
                   std::string serialized_param_bytes_str = absl::HexStringToBytes(absl::string_view(inner_split[2]));
                   std::vector<uint8_t> serialized_param_bytes(serialized_param_bytes_str.begin(), serialized_param_bytes_str.end());
@@ -194,8 +224,8 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                   //copy it because im too stupid to figure out c++
                   //auto params = std::make_unique<TransportParameters>(params_);
                   state->transport_params = std::move(params);
-                  /*std::unique_ptr<TransportParameters> params;
-                  params.reset(&params_);*/
+                  //std::unique_ptr<TransportParameters> params;
+                  //params.reset(&params_);
 
                   fprintf(stderr, "session_str = %s;\n", inner_split[1].c_str());
                   std::string cached_session = absl::HexStringToBytes(absl::string_view(inner_split[1]));
@@ -209,21 +239,77 @@ std::unique_ptr<QuicResumptionState> QuicClientSessionCache::Lookup(
                   std::vector<uint8_t> app_state_bytes(app_str.begin(), app_str.end());
                   state->application_state = std::make_unique<ApplicationState>(app_state_bytes);
 
-              }
-              //case token
+              }*/
+              // old case token
 
-              if (strcmp(outer_split[0].c_str(), "token") == 0) {
+              /*if (strcmp(outer_split[0].c_str(), "token") == 0) {
+               *  std::string token_;
                   std::vector<std::string> inner_split = absl::StrSplit(outer_split[1], '|');
                   std::vector<std::string> server_id_from_disk = absl::StrSplit(inner_split[0], ':');
                   fprintf(stderr, "**disk cache: token for server %s:%s\n", server_id_from_disk[0].c_str(), server_id_from_disk[1].c_str());
                   fprintf(stderr, "token = \"%s\";\n", inner_split[1].c_str());
-                  _token = absl::HexStringToBytes(absl::string_view(inner_split[1]));
+                  token_ = absl::HexStringToBytes(absl::string_view(inner_split[1]));
                   //std::map<std::string, std::string> server_to_token = absl::StrSplit(outer_split[1], '|');
+                  state->token = token_;
+              }*/
 
+              //case token
+              if (strcmp(outer_split[0].c_str(), "token") == 0) {
+                  token_bytes_str = absl::HexStringToBytes(absl::string_view(outer_split[1]));
+              }
+
+              //case transport parameters
+              if (strcmp(outer_split[0].c_str(), "transport_params") == 0) {
+                  transport_params_bytes_str = absl::HexStringToBytes(absl::string_view(outer_split[1]));
+              }
+
+              //case session ticket
+              if (strcmp(outer_split[0].c_str(), "session_ticket") == 0) {
+                  session_ticket_bytes_str = absl::HexStringToBytes(absl::string_view(outer_split[1]));
+              }
+
+              //case application layer state (e.g. H3 settings)
+              if (strcmp(outer_split[0].c_str(), "application_layer") == 0) {
+                  application_layer_bytes_str = absl::HexStringToBytes(absl::string_view(outer_split[1]));
               }
           }
-          //fprintf(stderr, "token = %s;\n", absl::BytesToHexString(absl::string_view(_token)).c_str());
-          state->token = _token;
+
+          //set values for resumption state from byte arrays
+          //token:
+          state->token = token_bytes_str;
+          //transport parameters:
+          std::vector<uint8_t> serialized_param_bytes(transport_params_bytes_str.begin(), transport_params_bytes_str.end());
+          auto params = std::make_unique<TransportParameters>();
+          std::string error_details;
+          bool success = ParseTransportParameters(ParsedQuicVersion::RFCv1(),
+                                                  Perspective::IS_SERVER,
+                                                  serialized_param_bytes.data(),
+                                                  serialized_param_bytes.size(),
+                                                  params.get(), &error_details);
+          if (!success) {
+              fprintf(stderr, "error when parsing transport parameters: %s\n", error_details.c_str());
+              return nullptr;
+          } else {
+              fprintf(stderr, "transport parameters from disk cache:\n%s\n", params->ToString().c_str());
+          }
+          state->transport_params = std::move(params);
+
+
+          //session ticket:
+          SSL_SESSION* session = SSL_SESSION_from_bytes(
+                  reinterpret_cast<const uint8_t*>(session_ticket_bytes_str.data()),
+                  session_ticket_bytes_str.size(), ctx);
+          state->tls_session = bssl::UniquePtr<SSL_SESSION>(session);
+
+          //application layer:
+          if (application_layer_bytes_str.empty()) {
+              //default value for quic-go test server
+              application_layer_bytes_str = absl::HexStringToBytes(absl::string_view("0400"));
+          }
+          std::vector<uint8_t> app_state_bytes(application_layer_bytes_str.begin(), application_layer_bytes_str.end());
+          state->application_state = std::make_unique<ApplicationState>(app_state_bytes);
+
+
           input_file.close();
           //clear the file after using it for the first lookup
           std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::trunc);
@@ -292,8 +378,9 @@ void QuicClientSessionCache::OnNewTokenReceived(const QuicServerId& server_id,
     if (strcmp(server_id.host().c_str(), server_under_test.c_str()) == 0) {
         std::ofstream output_file(session_cache_file.c_str(), std::ios::out | std::ios::app);
         if (output_file) {
-            output_file << "token=" << server_id.host() << ":" << server_id.port() << "|" <<
-                        absl::BytesToHexString(token).c_str() << std::endl;
+            /*output_file << "token=" << server_id.host() << ":" << server_id.port() << "|" <<
+                        absl::BytesToHexString(token).c_str() << std::endl;*/
+            output_file << "token=" << absl::BytesToHexString(token).c_str() << std::endl;
         }
     }
   auto iter = cache_.Lookup(server_id);
