@@ -50,7 +50,7 @@ QuicClientSessionCache::QuicClientSessionCache(size_t max_entries)
       session_cache_file("/tmp/chrome_session_cache.txt"),
       first_lookup_from_cold_start(true),
       first_insert_from_cold_start(true),
-      server_under_test("www.example.org")
+      server_under_test("www.localdomain.com")
       {}
 
 QuicClientSessionCache::~QuicClientSessionCache() { Clear(); }
