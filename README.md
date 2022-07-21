@@ -1,6 +1,6 @@
 # QUICHE modified
 ## Modification:
-- `quic/core/crypto/quic_client_session_cache.h/.cc` is modified to write the session ticket, address validation token, server transport parameters and server SETTINGS to `/tmp/chrome_session_cache.txt` if the host/domain name is `www.localdomain.com`
+- `quic/core/crypto/quic_client_session_cache.h/.cc` are modified to write the session ticket, address validation token, server transport parameters and server SETTINGS to `/tmp/chrome_session_cache.txt` if the host/domain name is `www.localdomain.com`
 
 QUICHE stands for QUIC, Http, Etc. It is Google's production-ready
 implementation of QUIC, HTTP/2, HTTP/3, and related protocols and tools. It
